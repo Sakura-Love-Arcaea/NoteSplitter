@@ -6,7 +6,7 @@ const $n = (n) => {
 };
 
 // 1. (lilypond)原始lilypond字符串: "e16 r16 e16 e16 r16 r16 e16 r16 e16 e16 e16 r16 e16 r16 e16 r16"
-// 2. (parsed)物件數組: [{type: "e"|"r", duration: number}]
+// 2. (parsed)物件數組: [{type: "e"|"r", value: number}]
 // 3. (reduced)休止符合併後的分數數組: no rest
 // 4. (normalized)連音線分數字符串數組: having '~' and 'u' and 'b' and 'unf' and 'bnf' and -1
 // 5. (atomized) !棄用 規範分數字符串數字+附點判斷: ['0.1875'] -> ['0.125+0.0625']
@@ -28,7 +28,7 @@ class NoteSplitter {
      * parsed
      * 把lilypond字符串轉換為
      * @param {String} lilyStr Lilypond字符串（不支持附點）
-     * @returns {object[]} [{type: "e"|"r", duration: number}]
+     * @returns {object[]} [{type: "e"|"r", value: number}]
      */
     parseLilypond = () => {
         const lilyStr = this.content;
@@ -37,7 +37,7 @@ class NoteSplitter {
         const result = matchs.map((match) => {
             return {
                 type: match[1],
-                duration: 1 / Number(match[2]),
+                value: 1 / Number(match[2]),
             };
         });
         this.content = result;
@@ -47,7 +47,7 @@ class NoteSplitter {
     /**
      * reduced
      * 利用中間格式合併休止符
-     * @param {object[]} [{type: "e"|"r", duration: number}]
+     * @param {object[]} [{type: "e"|"r", value: number}]
      * @returns {fraction[]} 合併休止符後的數組
      */
     reduceRest = () => {
@@ -61,16 +61,16 @@ class NoteSplitter {
             first = parsed.shift(); // 取出第一個
             if (first.type === "e") {
                 if (addingflag) {
-                    result.push(temp);
+                    result.push({ type: "e", value: temp });
                     temp = 0;
                 }
                 addingflag = true;
-                temp = first.duration;
+                temp = first.value;
             } else {
-                temp += first.duration;
+                temp += first.value;
             }
         }
-        result.push(temp.toString());
+        result.push({ type: "e", value: temp });
         this.content = result;
         return this;
     };
@@ -81,78 +81,51 @@ class NoteSplitter {
      * @param {*} reduced
      * @param {boolean} [u=false] 是否在單位結束時添加 "u" 標記。
      * @param {boolean} [b=false] 是否在小節結束時添加 "b" 標記。
-     * @returns {String[]} [fraction + "~" + "u" + "b" + "unf" + "bnf" + -1]
+     * @returns {String[]} {type: "e"|"r"|"e~"|"~"|"u"|"b"|"unf"|"bnf"|"finish", value: number}
      */
     split = (b = false, u = false, terminator = false) => {
         const reduced = this.content;
-        const res = [];
-        const group = [];
-        let first;
+        const res = []; //[{type, value}]
+        const group = []; //[{type, value}]
+        let first; // {type, value}
         let barC = 0;
+
         while (reduced.length > 0) {
             first = reduced.shift();
-
             group.push(first);
-            if (group.reduce((acc, cur) => acc + cur, 0) === this.divisor) {
-                res.push(...group.map((e) => `${e}`));
-                if (u) res.push("u");
+            if (group.reduce((acc, cur) => acc + cur.value, 0) === this.divisor) {
+                res.push(...group);
+                if (u) res.push({ type: "separator", value: "u" });
                 barC += this.divisor;
                 group.length = 0;
             }
-            if (group.reduce((acc, cur) => acc + cur, 0) > this.divisor) {
-                const last = group.pop();
-                const remain = group.reduce((acc, cur) => acc + cur, 0);
-                const fill = this.divisor - remain;
-                const tie = { first: fill, second: last - fill };
+
+            if (group.reduce((acc, cur) => acc + cur.value, 0) > this.divisor) {
+                const last = group.pop(); // {type, value}
+                const remain = group.reduce((acc, cur) => acc + cur.value, 0); // fraction
+                const fill = this.divisor - remain; // fraction
+                const tie = { first: fill, second: last.value - fill };
                 // group.push(tie.first);
-                reduced.unshift(tie.second);
-                res.push(...group.map((e) => `${e}`), `${tie.first}~`);
-                if (u) res.push("u");
+                reduced.unshift({ type: "~", value: tie.second });
+                res.push(...group, { type: "e~", value: tie.first });
+                if (u) res.push({ type: "separator", value: "u" });
                 barC += this.divisor;
                 group.length = 0;
             }
             if (barC === this.bar) {
-                if (b) res.push("b");
+                if (b) res.push({ type: "separator", value: "b" });
                 barC = 0;
             }
         }
-        res.push(...group.map((e) => `${e}`));
-        if (group.length > 0) res.push("unf");
-        if (barC > 0) res.push("bnf");
+        res.push(...group);
+        if (group.length > 0) res.push({ type: "finish", value: "unf" });
+        if (barC > 0) res.push({ type: "finish", value: "bnf" });
         // unf aka unit not finish
         // bnf aka bar not finish
-        if (terminator) res.push(-1);
+        if (terminator) res.push({ type: "finish", value: -1 });
         this.content = res;
         return this;
     };
-
-    /**
-     * atomize
-     * 如何用+號表示附點['0.1875'] -> ['0.125+0.0625']
-     */
-    atomize = () => {
-        const normalized = this.content;
-        // method 1 自己查（跳過原子化）
-        const dotMap = {
-            0.09375: "0.0625+0.03125", // 3/16 a.k.a  16.
-            0.1875: "0.125+0.0625", // 3/8  a.k.a  8.
-            0.375: "0.25+0.125", // 3/4  a.k.a  4.
-            0.75: "0.5+0.25", // 3/2  a.k.a  2.
-
-            0.21875: "0.125+0.0625+0.03125", // 7/8  a.k.a  8..
-            0.4375: "0.25+0.125+0.0625", // 7/4  a.k.a  4..
-            0.875: "0.5+0.25+0.125", // 7/2  a.k.a  2..
-        };
-        const regex = /(\d+\.\d+)/;
-        const result = normalized.map((fraction) => {
-            return fraction.replace(regex, (match) => {
-                return dotMap[match] || match;
-            });
-        });
-        this.content = result;
-        return this;
-    };
-
     /**
      *
      * @returns 根據連音不連音，加上連音符號、處理換行，返回lilypond字符串
@@ -175,17 +148,18 @@ class NoteSplitter {
             0.4375: "4..", // 7/4  a.k.a  4..
             0.875: "2..", // 7/2  a.k.a  2..
         };
-        const regex = /\d+\.\d+/;
-        let flag = false;
 
-        const result = normalized.map((fraction) => {
-            if (fraction.includes("b")) {
+        const result = normalized.map((item) => {
+            if (item.type === "separator" && item.value === "b") {
                 return "\n";
             }
-            let replace = flag ? "" : "e";
-            replace += fraction.replace(regex, (match) => dotMap[match] || match);
-            flag = fraction.includes("~");
-            return replace;
+            if (item.type === "e~") {
+                return `e${dotMap[item.value] || item.value}~`;
+            } else if (item.type === "~") {
+                return `${dotMap[item.value] || item.value}`;
+            } else if (item.type === "e") {
+                return `e${dotMap[item.value] || item.value}`;
+            }
         });
 
         this.content = result;
@@ -193,7 +167,16 @@ class NoteSplitter {
     };
 
     join = () => {
-        // 解決\n問題
+        let result = "";
+        this.content.forEach((element) => {
+            if (element === "\n") {
+                result += "\n";
+            } else {
+                result += element + " ";
+            }
+        });
+        this.content = result;
+        return this;
     };
 }
 

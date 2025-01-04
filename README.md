@@ -23,4 +23,12 @@
 
 ## v0.1.1
 
-1. 改善數據表達
+1. 未改善休止符前置問題
+
+2. 變量改名`duration`->`value`
+
+3. 改善數據表達: 把 parse 轉換為`[fraction]`改為 parseTree（主要改動 reduce, split, lilypond）
+
+4. parseTree: `[{type: "e"|"r"|"e~"|"~"|"finish", value: number}]`
+
+5. 刪除 `atomize`，因為沒有用到

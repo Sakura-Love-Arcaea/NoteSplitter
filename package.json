@@ -1,0 +1,12 @@
+{
+    "name": "notesplitter",
+    "version": "0.0.1",
+    "description": "節奏規範化處理（使用Lilypond）",
+    "main": "main.js",
+    "scripts": {
+        "test": "node main.js"
+    },
+    "author": "SakuraLoveArcaea",
+    "license": "ISC",
+    "type": "module"
+}

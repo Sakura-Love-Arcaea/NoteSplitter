@@ -50,27 +50,33 @@ class NoteSplitter {
      * @param {object[]} [{type: "e"|"r", value: number}]
      * @returns {fraction[]} 合併休止符後的數組
      */
+    //  version 0.1.2
     reduceRest = () => {
-        // 佔位符號的概念
         const parsed = this.content;
         const result = [];
-        let addingflag = false;
-        let temp = 0;
-        let first;
+        const queue = [];
+        const pack = (result, queue) => {
+            if (queue.length === 0) return;
+            let temp = 0;
+            let eflag = false;
+            while (queue.length > 0) {
+                const pickUp = queue.shift();
+                if (pickUp.type === "e") eflag = true;
+                temp += pickUp.value;
+            }
+            result.push({ type: eflag ? "e" : "r", value: temp });
+        };
         while (parsed.length > 0) {
-            first = parsed.shift(); // 取出第一個
-            if (first.type === "e") {
-                if (addingflag) {
-                    result.push({ type: "e", value: temp });
-                    temp = 0;
-                }
-                addingflag = true;
-                temp = first.value;
-            } else {
-                temp += first.value;
+            const pickUp = parsed.shift();
+            if (pickUp.type === "e") {
+                // dequeue之前所有，並加起來，加入result（{ type: "e", value: temp }）
+                pack(result, queue);
+                queue.push(pickUp);
+            } else if (pickUp.type === "r") {
+                queue.push(pickUp);
             }
         }
-        result.push({ type: "e", value: temp });
+        pack(result, queue);
         this.content = result;
         return this;
     };
@@ -150,15 +156,33 @@ class NoteSplitter {
         };
 
         const result = normalized.map((item) => {
-            if (item.type === "separator" && item.value === "b") {
-                return "\n";
-            }
-            if (item.type === "e~") {
-                return `e${dotMap[item.value] || item.value}~`;
-            } else if (item.type === "~") {
-                return `${dotMap[item.value] || item.value}`;
-            } else if (item.type === "e") {
-                return `e${dotMap[item.value] || item.value}`;
+            switch (item.type) {
+                case "separator":
+                    switch (item.value) {
+                        case "u":
+                            return ",";
+                        case "b":
+                            return "\n";
+                    }
+                case "finish":
+                    switch (item.value) {
+                        case "bnf":
+                            return "BNF";
+                        case "unf":
+                            return "UND";
+                        case -1:
+                            return "\nEND";
+                    }
+                case "e~":
+                    return `e${dotMap[item.value] || item.value}~`;
+                case "~":
+                    return `${dotMap[item.value] || item.value}`;
+                case "e":
+                    return `e${dotMap[item.value] || item.value}`;
+                case "r~":
+                    return `r${dotMap[item.value] || item.value}~`;
+                case "r":
+                    return `r${dotMap[item.value] || item.value}`;
             }
         });
 

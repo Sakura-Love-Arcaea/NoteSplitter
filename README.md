@@ -32,3 +32,11 @@
 4. parseTree: `[{type: "e"|"r"|"e~"|"~"|"finish", value: number}]`
 
 5. 刪除 `atomize`，因為沒有用到
+
+## v0.1.2
+
+1. 改善休止符前置問題
+
+2. 修改 reduceRest 函數，利用 Queue
+
+3. 連帶修改 lilypond 函數，修正輸出

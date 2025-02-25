@@ -113,7 +113,7 @@ class NoteSplitter {
                 const tie = { first: fill, second: last.value - fill };
                 // group.push(tie.first);
                 reduced.unshift({ type: "~", value: tie.second });
-                res.push(...group, { type: "e~", value: tie.first });
+                res.push(...group, { type: `e~`, value: tie.first }); //original // 休止符沒有連音線 所有要寫
                 if (u) res.push({ type: "separator", value: "u" });
                 barC += this.divisor;
                 group.length = 0;
@@ -184,6 +184,7 @@ class NoteSplitter {
                 case "r":
                     return `r${dotMap[item.value] || item.value}`;
             }
+            return `[error: ${item.type}${item.value}]`;
         });
 
         this.content = result;
